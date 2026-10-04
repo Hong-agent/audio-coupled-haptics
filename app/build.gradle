@@ -1,0 +1,65 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.gaolou.boneconduction'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.gaolou.boneconduction"
+        minSdk 31
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a'
+        }
+        externalNativeBuild {
+            cmake {
+                // 静态链接 C++ 运行时，避免运行期缺少 libc++_shared.so
+                arguments "-DANDROID_STL=c++_static"
+                cppFlags "-fno-exceptions -fno-rtti"
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+            version "3.22.1"
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    ndkVersion "26.3.11579264"
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging false
+        }
+    }
+
+    lint {
+        // 文案为中文硬编码（无多语言需求）、竖屏锁定与 v26 图标目录均为有意选择
+        disable 'HardcodedText', 'LockedOrientationActivity', 'ObsoleteSdkInt'
+        abortOnError false
+    }
+}
+
+dependencies {
+    // 仅用于 JVM 侧验证触觉混音算法（无 Android 依赖）
+    testImplementation 'junit:junit:4.13.2'
+}

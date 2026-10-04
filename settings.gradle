@@ -1,0 +1,26 @@
+pluginManagement {
+    repositories {
+        // 国内镜像优先：dl.google.com 在本机不可达
+        maven { url 'https://maven.aliyun.com/repository/google' }
+        maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
+        maven { url 'https://maven.aliyun.com/repository/public' }
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        maven { url 'https://maven.aliyun.com/repository/google' }
+        maven { url 'https://maven.aliyun.com/repository/public' }
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "AudioCoupledHaptics"
+include ':app'
+// 可选的自检工具：播放一段 USAGE_MEDIA 测试音，用来验证「外部声音 → 马达」链路
+include ':tonegen'
