@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>实现原理 · 骨传导音乐 (BoneConduction)</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --border:#262b36; --fg:#e6e9ef; --muted:#9aa4b2;
+    --accent:#4ea1ff; --accent2:#5bd6a4; --warn:#ffb454; --code:#11141a;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font:15px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  .wrap{max-width:960px;margin:0 auto;padding:40px 22px 80px}
+  h1{font-size:30px;line-height:1.3;margin:0 0 6px}
+  h2{font-size:21px;margin:44px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+  h3{font-size:17px;margin:26px 0 8px;color:var(--accent)}
+  p{margin:10px 0}
+  .sub{color:var(--muted);margin-bottom:26px}
+  code{background:var(--code);padding:2px 6px;border-radius:5px;font-size:13px;
+       font-family:Consolas,Menlo,"Courier New",monospace;color:var(--accent2)}
+  pre{background:var(--code);border:1px solid var(--border);border-radius:10px;
+      padding:16px;overflow:auto;font-size:13px;line-height:1.6}
+  pre code{background:none;padding:0;color:#cfd6e4}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin:18px 0}
+  .note{border-left:3px solid var(--accent)}
+  .warn{border-left:3px solid var(--warn)}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:14px}
+  th,td{border:1px solid var(--border);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:#1c212b;color:var(--accent)}
+  .tag{display:inline-block;background:#1f2733;color:var(--accent2);border-radius:6px;
+       padding:1px 8px;font-size:12px;margin-right:6px}
+  .muted{color:var(--muted)}
+  a{color:var(--accent)}
+  .crosslink{
+    display:flex;flex-wrap:wrap;align-items:center;gap:8px;
+    background:linear-gradient(90deg,#17202b,#141b24);
+    border:1px solid var(--border);border-radius:10px;
+    padding:10px 16px;margin:0 0 24px;font-size:13.5px;color:var(--muted);
+  }
+  .crosslink strong{color:var(--fg)}
+  .crosslink .cl-label{
+    background:#1f2733;color:var(--accent2);border-radius:6px;
+    padding:1px 9px;font-size:12px;font-weight:600;
+  }
+  .crosslink .cl-sep{color:#3a424e}
+  .crosslink a{font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>实现原理</h1>
+<p class="sub">骨传导音乐 · BoneConduction — 用音频耦合触觉（Audio-coupled Haptics）让马达跟着系统声音振动</p>
+
+<div class="crosslink">
+  <span class="cl-label">本文档</span>
+  <strong>实现原理（通俗版）</strong>
+  <span class="cl-sep">·</span>
+  <span>另有面向开发/AI 的完整构建蓝图：</span>
+  <a href="haptic-playback-spec.html">实现规格书（AI 构建蓝图）→</a>
+</div>
+
+
+<div class="panel note">
+<p><strong>本文档为项目自撰</strong>：依据 Android 公开 API 与 Ogg/Vorbis 公开规范，说明<em>本项目代码</em>的实际实现，
+不含任何第三方分析文档的独家表述。涉及平台行为的部分以代码中的实测结论为准。</p>
+</div>
+
+<h2>一、要解决的核心问题</h2>
+<p>
+Android 12（API 31）引入了<strong>音频耦合触觉</strong>：如果一段音频被标记为"带触觉声道"，
+系统的音频 HAL 会把这条声道单独取出来，映射成振动电机的驱动波形。
+于是"让马达跟音乐一起动"就有了官方通路——不需要自己调用 <code>Vibrator</code>，
+而是<strong>把想要的振感当作一条音频声道播出去</strong>。
+</p>
+<p>
+本项目的思路正是如此：抓取系统正在播放的声音 → 生成一条"触觉声道" → 编码成合法的
+多声道 Ogg/Vorbis（并打上标记）→ 交回系统播放 → HAL 自动驱动马达。整条链路如下：
+</p>
+
+<pre><code>系统正在播放的音频
+   │  MediaProjection 授权
+   ▼
+[1] CaptureEngine   AudioRecord 内录（48k/16bit/立体声，URGENT_AUDIO 线程）
+   ▼  每 4800 帧（100ms）一块
+[2] HapticMixer     生成第 3 声道：高通塑形 + 动态压缩 + 削波
+   ▼  聚合满 24000 帧（500ms）
+[3] libhapticogg.so  libVorbis 编码 3 声道 Ogg，写 ANDROID_HAPTIC=1
+   ▼  环形文件槽位
+[4] SegmentPlayer   双 MediaPlayer 无缝接力，路由到听筒
+   ▼
+[5] 音频 HAL 分离第 3 声道 → 振动马达
+（旁路）SessionMuter 把"原声"压掉，避免回声</code></pre>
+
+<h2>二、采集层：把系统声音"接"过来</h2>
+
+<h3>2.1 为什么必须走 MediaProjection</h3>
+<p>
+从 Android 10 起，录制<strong>其它应用</strong>的音频受严格管控，唯一合规途径是
+<code>MediaProjection</code>（屏幕录制授权）。因此首次点击"开始"会弹出系统录屏确认框——
+这不是在录屏，而是获取音频回环（playback capture）的凭据。
+</p>
+
+<h3>2.2 只抓该抓的：按 Usage 过滤</h3>
+<p>
+<code>AudioPlaybackCaptureConfiguration</code> 允许指定"只抓哪些用途的声音"。本项目匹配
+<code>USAGE_MEDIA / USAGE_GAME / USAGE_UNKNOWN / USAGE_ASSISTANT</code>，
+即音乐、视频、游戏、语音助手；<strong>刻意不抓</strong>通话、通知提示等隐私音频，符合平台合规要求。
+见 <code>CaptureEngine.start()</code>。
+</p>
+
+<h3>2.3 实时性与"整块读取"</h3>
+<div class="panel">
+<p><span class="tag">线程优先级</span>读取线程设为 <code>THREAD_PRIORITY_URGENT_AUDIO</code>，接近音频实时优先级。</p>
+<p><span class="tag">整块读</span><code>readFully()</code> 会循环补齐，确保每次正好拿到
+ <code>4800</code> 帧（100ms），避免因部分读取导致下游帧数漂移。</p>
+<p><span class="tag">防爆队列</span>采集结果放入容量 4 的阻塞队列；<strong>队列满时丢最旧</strong>，
+ 而不是阻塞——这是保证"延迟有上限"的第一道闸门。</p>
+</div>
+
+<h2>三、触觉声道：怎么把声音变成"振感"</h2>
+
+<p>
+触觉声道的取值不是简单复制原声。原始立体声的低频能量通常远大于中高频，
+若直接拿 <code>(L+R)</code> 驱动马达，会变成"低音轰炸"。因此在
+<code>HapticMixer.mix()</code> 中做了三级处理：
+</p>
+
+<h3>3.1 第一步：高通塑形（Tone shaping）</h3>
+<p>
+用级联的一阶高通滤掉低频，让振感更多跟随中高频（人声、旋律、打击瞬态）。
+一阶滤波器递推式：
+</p>
+<pre><code>y[n] = a * ( y[n-1] + x[n] - x[n-1] )
+a    = RC / (RC + 1),   RC = 1 / (2π·fc/fs)</code></pre>
+<p>
+<strong>级联 N 级</strong>可把滚降从 6 dB/倍频提高到 N×6 dB/倍频，本项目默认
+<code>HAPTIC_HIGHPASS_ORDER = 2</code>、<code>HAPTIC_HIGHPASS_HZ = 250</code>。
+另外用 <code>HAPTIC_LOW_SHELF</code> 混回少量原始低频，保留"身体感"。
+</p>
+
+<h3>3.2 第二步：动态压缩（Compressor）— 这是本项目对"音质/触发问题"的关键取舍</h3>
+<div class="panel note">
+<p><strong>问题</strong>：只用"阈值门"（低于某音量就静音）会导致<span class="muted">安静段落丢失</span>；
+只用"硬削波"又会在响段<span class="muted">打底（顶到电机极限）</span>。</p>
+<p><strong>解法</strong>：引入分块 RMS 压缩器——</p>
+<ul>
+  <li>RMS <strong>低于</strong>阈值 <code>COMPRESS_THRESHOLD=0.35</code>：原样通过，安静段落完整保留；</li>
+  <li>RMS <strong>高于</strong>阈值：按 <code>COMPRESS_RATIO=3:1</code> 压缩，把响段（尤其低音鼓）压住，
+      不再冲顶；</li>
+  <li>增益按 attack/release 平滑（<code>0.4 / 0.08</code>），避免"抽吸"感。</li>
+</ul>
+<pre><code>若 rms &gt; 阈值:
+    target = (阈值 / rms) ^ (1 - 1/压缩比)
+    compGain += 系数 × (target - compGain)   // 压缩时 attack，恢复时 release
+否则:
+    compGain 缓慢回到 1.0</code></pre>
+</div>
+
+<h3>3.3 第三步：软削波（避免硬削平）</h3>
+<p>
+即使压缩后仍有瞬时尖峰。硬削波（直接截断到 ±32767）会产生刺耳的"打底"失真；
+本项目默认启用<strong>有理函数软削波</strong>，近似 tanh 的膝部曲线：
+</p>
+<pre><code>f  = clamp(x / 32768, ±SOFT_CLIP_LIMIT)
+y  = f · (f² + 27) / (9f² + 27)      // 平滑压缩，超过上限不再上扬
+out= y · 32767</code></pre>
+<p>最终声道：<code>out = [ L, R, haptic ]</code>，第 3 声道才是驱动马达的信号。</p>
+
+<h3>3.4 音量与震动的关系</h3>
+<div class="panel">
+<p>触觉输出电平由固定系数 <code>HAPTIC_OUTPUT_SCALE</code> 决定，并叠加压缩增益。
+另设极低门槛 <code>HAPTIC_GATE_RMS=0.02</code>：只有接近真正静音（&lt;2%）才彻底不震，
+避免底噪引起持续微震。</p>
+</div>
+
+<h2>四、编码层：让它成为"合法的触觉音频"</h2>
+
+<h3>4.1 关键魔法串 <code>ANDROID_HAPTIC=1</code></h3>
+<p>
+平台在解析 Vorbis 注释头（comment header）时，会查找<strong>一条恰好等于</strong>
+<code>ANDROID_HAPTIC=1</code> 的条目；找到后即认为"这是触觉音频，最后一条声道是触觉声道"。
+本项目在 <code>haptic_ogg.cpp</code> 中显式写入：
+</p>
+<pre><code>vorbis_comment_add(&amp;vc, "ENCODER=vorbis");
+if (channels == 3)
+    vorbis_comment_add(&amp;vc, "ANDROID_HAPTIC=1");   // 必须完整、独立的一条</code></pre>
+<div class="panel warn">
+<p><strong>踩坑记录</strong>：曾用 <code>vorbis_comment_add_tag()</code> 拼接键值，结果写出的注释变成
+粘连串（如 <code>ENCODER=ENCODERANDROID_HAPTIC=1…</code>），平台匹配失败 →
+<strong>能播不震</strong>。改用 <code>vorbis_comment_add()</code> 写入完整字符串后解决。</p>
+</div>
+
+<h3>4.2 libVorbis 编码流程</h3>
+<p>
+标准 VBR 流程：<code>vorbis_encode_init_vbr()</code> → 写头 → 分块喂入
+（每块 1024 帧，归一化到 float）→ <code>vorbis_analysis_wrote(…, 0)</code> 结束流。
+质量参数即界面的"编码质量"（0.05~1.0，默认 0.5），越高越清晰但编码越耗时。
+</p>
+<p>为降低首播延迟，三个头页用 <code>ogg_stream_flush</code> 立即刷盘，使播放能尽早开始。</p>
+
+<h2>五、播放层：无缝接力 + 触觉路由</h2>
+
+<h3>5.1 双 MediaPlayer 接力（Gapless）</h3>
+<p>
+500ms 一段若用单播放器会段间有缝。本项目用两个 <code>MediaPlayer</code>：
+先播 <code>cur</code>，同时 <code>cur.setNextMediaPlayer(next)</code> 预挂下一段，
+平台会在段末无间隙切换。完成回调里再把刚播完的设为 current、预挂新的下一段，如此循环。
+</p>
+
+<div class="panel warn">
+<p><strong>关键约束：必须共享同一个 audio session</strong>。<code>setNextMediaPlayer</code> 的接力要求
+两个播放器同 session，否则框架会拆掉旧 track（实测表现为"播约 90ms 就被 stop"，
+链条随即断裂、震动消失）。因此本项目让每段
+<code>setAudioSessionId(sharedSessionId)</code> 复用同一 session。</p>
+<p><strong>完成回调要兼容两种身份</strong>：共享 session 后，
+完成回调可能是"下一个"播放器触发的，判断条件需同时覆盖 <code>completed == cur</code> 与
+<code>completed == next</code>。</p>
+<p><strong>起播要预缓冲</strong>：攒够 <code>START_PREBUFFER=2</code> 段再起播，
+否则编码器跟不上实时速度，在第一个 500ms 边界就会断流、路由被系统回收。</p>
+</div>
+
+<h3>5.2 为什么必须路由到"听筒"</h3>
+<div class="panel note">
+<p>在部分（尤其是高通平台）设备上，音频 HAL <strong>只在流走听筒通话路径时</strong>才把第 3 声道
+转发给马达；走默认扬声器路径时该声道被直接丢弃 → 表现为"无震动"。</p>
+<p>因此本项目 <code>SegmentPlayer</code>：</p>
+<ul>
+<li>用 <code>AudioManager.setCommunicationDevice(内置听筒)</code> 把输出强制走听筒；</li>
+<li>播放器的 <code>AudioAttributes</code> 用 <code>USAGE_VOICE_COMMUNICATION</code>——
+  这是 <code>setCommunicationDevice</code> 能生效的前提；</li>
+<li><code>pump</code> 循环每 50ms 检查一次路由，掉了立刻重设（自愈）。</li>
+</ul>
+<p class="muted">副作用：声音会从听筒出来、音量偏小，属正常现象（与原实现行为一致）。</p>
+</div>
+
+<h3>5.3 防止自激回环</h3>
+<p>
+若不限制，我们播放的声音会被 <code>MediaProjection</code> 再次抓取 → 无限回环。
+本项目设置 <code>setAllowedCapturePolicy(ALLOW_CAPTURE_BY_NONE)</code>，
+并显式 <code>setHapticChannelsMuted(false)</code> 允许触觉声道输出。
+</p>
+
+<h2>六、消除回声：原声静音</h2>
+<p>
+因为我们是"抓取 → 重放"，用户会同时听到原始声 + 约 500ms 延迟的重放声，叠加成回声。
+<code>SessionMuter</code> 的做法是：周期性读取外部音频会话列表，对每个外部会话挂载
+一个 <code>-80dB</code> 的输入增益效果，把原声压掉。
+</p>
+<table>
+<tr><th>环节</th><th>做法</th></tr>
+<tr><td>会话发现</td><td>读取 <code>dumpsys audio</code> 的会话/UID 列表（需特权 shell）</td></tr>
+<tr><td>静音手段</td><td>首选 <code>DynamicsProcessing</code> 输入增益 -80dB；ROM 不支持时回退到反射调用隐藏的 <code>Volume</code> 效果（-96dB + MUTE）</td></tr>
+<tr><td>自我保护</td><td>绝不静音本项目自己的会话（用 <code>ownSessionIds</code> 排除）</td></tr>
+<tr><td>降级</td><td>无特权时静音不生效，用户会听到回声——这是<strong>预期降级</strong>，非崩溃</td></tr>
+</table>
+
+<h2>七、低延迟设计小结</h2>
+<table>
+<tr><th>环节</th><th>取值</th><th>目的</th></tr>
+<tr><td>采集块</td><td>4800 帧 / 100ms</td><td>实时反馈粒度</td></tr>
+<tr><td>分片时长</td><td>500ms</td><td>编码/播放平衡</td></tr>
+<tr><td>待播上限</td><td>6 片</td><td>超限丢最旧，延迟不无限累积</td></tr>
+<tr><td>起播预缓冲</td><td>2 片</td><td>防队列抽空、路由被回收</td></tr>
+<tr><td>采集线程</td><td>URGENT_AUDIO</td><td>接近音频实时优先级</td></tr>
+<tr><td>路由巡检</td><td>50ms</td><td>听筒路由掉了自愈</td></tr>
+</table>
+<p class="muted">
+固有端到端延迟约 550~650ms（采集块 + 分片 + 编码 + 播放缓冲）。
+可用界面的"对齐延迟"（±2000ms）在听感上做补偿，但无法从物理上彻底消除。
+</p>
+
+<h2>八、设备与权限要求（务必先读）</h2>
+<table>
+<tr><th>项</th><th>要求 / 说明</th></tr>
+<tr><td>系统版本</td><td>Android 12+（API 31），音频耦合触觉自该版本引入</td></tr>
+<tr><td>触觉播放支持</td><td>设备须支持触觉播放（<code>areAllPrimitivesSupported()</code>），否则"能播不震"</td></tr>
+<tr><td>振幅控制</td><td>马达须支持振幅控制（<code>hasAmplitudeControl()</code>），否则震感只有开/关</td></tr>
+<tr><td>屏幕录制授权</td><td>内录系统声音的强制前提，每次开始需确认</td></tr>
+<tr><td>特权 shell</td><td>"静音原声"需 <code>su</code>（root）或 Shizuku/adb 环境读取会话列表</td></tr>
+<tr><td>受保护内容</td><td>DRM / 禁止录制 的 App 抓不到音频，表现为静音</td></tr>
+</table>
+
+<h2>九、与我们代码的对应关系</h2>
+<table>
+<tr><th>阶段</th><th>源文件</th></tr>
+<tr><td>参数总表 / 运行期设置</td><td><code>EngineConfig.java</code> / <code>EngineSettings.java</code></td></tr>
+<tr><td>采集</td><td><code>CaptureEngine.java</code></td></tr>
+<tr><td>触觉合成</td><td><code>HapticMixer.java</code>、<code>AudioDelayLine.java</code></td></tr>
+<tr><td>流水线编排</td><td><code>OggSink.java</code>、<code>SegmentRing.java</code></td></tr>
+<tr><td>原生编码</td><td><code>cpp/haptic_ogg.cpp</code> + <code>nativebridge/HapticOgg.java</code></td></tr>
+<tr><td>播放 / 路由</td><td><code>SegmentPlayer.java</code></td></tr>
+<tr><td>原声静音</td><td><code>SessionMuter.java</code>、<code>PrivilegedShell.java</code></td></tr>
+<tr><td>设备探测 / 总控 / UI</td><td><code>Haptics.java</code>、<code>EngineService.java</code>、<code>MainActivity.java</code></td></tr>
+</table>
+
+<h2>十、术语表</h2>
+<table>
+<tr><th>术语</th><th>含义</th></tr>
+<tr><td>音频耦合触觉</td><td>Audio-coupled Haptics，用音频声道承载振动波形的官方机制</td></tr>
+<tr><td>playback capture</td><td>通过 MediaProjection 抓取系统播放音频的能力</td></tr>
+<tr><td>触觉声道</td><td>多声道音频中的最后一条声道，被 HAL 送去驱动马达</td></tr>
+<tr><td>RMS</td><td>均方根，衡量一段信号的响度/能量</td></tr>
+<tr><td>动态压缩</td><td>超过阈值后按比例衰减，压住响段而不影响弱段</td></tr>
+<tr><td>软削波</td><td>平滑的过载限制，避免硬截断产生的刺耳失真</td></tr>
+</table>
+
+<p class="muted" style="margin-top:40px">
+本文件由项目自行撰写，描述本项目代码的实现原理。平台行为随厂商/版本可能不同，
+以实际设备表现为准。
+</p>
+
+</div>
+</body>
+</html>

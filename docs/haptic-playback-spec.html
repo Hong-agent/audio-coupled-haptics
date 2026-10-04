@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>音频耦合触觉播放器 · 实现规格书（AI 构建蓝图）</title>
+<style>
+  :root{
+    --bg:#0e1117; --panel:#161b22; --border:#2a313c; --fg:#e6e9ef; --muted:#9aa4b2;
+    --accent:#58a6ff; --accent2:#3fb950; --warn:#d29922; --danger:#f85149;
+    --code:#0d1117; --codefg:#c9d1d9; --kw:#ff7b72; --str:#a5d6ff; --com:#8b949e;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font:15px/1.8 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  .layout{display:flex;max-width:1280px;margin:0 auto}
+  /* ===== TOC ===== */
+  nav.toc{
+    position:sticky; top:0; align-self:flex-start;
+    width:280px; max-height:100vh; overflow-y:auto;
+    padding:26px 14px 40px; border-right:1px solid var(--border);
+    font-size:13.5px; flex-shrink:0;
+  }
+  nav.toc h2{font-size:13px;letter-spacing:.08em;color:var(--muted);
+    text-transform:uppercase;margin:18px 0 8px}
+  nav.toc a{display:block;color:var(--muted);text-decoration:none;
+    padding:3px 10px;border-radius:6px;line-height:1.5}
+  nav.toc a:hover{background:#1f2733;color:var(--fg)}
+  nav.toc a.lv2{font-weight:600;color:#c9d1d9;margin-top:6px}
+  nav.toc a.lv3{padding-left:22px;font-size:12.8px}
+  /* ===== content ===== */
+  main{flex:1;min-width:0;padding:40px 34px 100px}
+  h1{font-size:28px;line-height:1.35;margin:0 0 6px;
+    background:linear-gradient(90deg,#58a6ff,#3fb950);
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  h2{font-size:22px;margin:48px 0 14px;padding-bottom:10px;
+    border-bottom:1px solid var(--border);scroll-margin-top:16px}
+  h3{font-size:17px;margin:28px 0 8px;color:var(--accent);scroll-margin-top:16px}
+  h4{font-size:15px;margin:20px 0 6px;color:#c9d1d9}
+  p{margin:10px 0}
+  a{color:var(--accent)}
+  hr{border:none;border-top:1px solid var(--border);margin:34px 0}
+  strong{color:#fff}
+  .lead{color:var(--muted);font-size:14.5px;border-left:3px solid var(--accent);
+    padding:8px 16px;background:var(--panel);border-radius:0 8px 8px 0;margin:14px 0}
+  code{
+    background:var(--code);padding:2px 6px;border-radius:5px;font-size:13px;
+    font-family:Consolas,Menlo,"Courier New",monospace;color:var(--accent2);
+    word-break:break-word;
+  }
+  pre{background:var(--code);border:1px solid var(--border);border-radius:10px;
+    padding:16px 18px;overflow:auto;font-size:12.8px;line-height:1.65;margin:14px 0}
+  pre code{background:none;padding:0;color:var(--codefg);font-size:12.8px;
+    word-break:normal;white-space:pre}
+  pre .c{color:var(--com)}          /* comment */
+  pre .k{color:var(--kw)}           /* keyword */
+  pre .s{color:var(--str)}          /* string */
+  pre .m{color:#d2a8ff}             /* marker/star */
+  blockquote{margin:14px 0;padding:10px 18px;background:var(--panel);
+    border-left:3px solid var(--accent2);border-radius:0 8px 8px 0;color:#cfd6e4}
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:13.6px}
+  th,td{border:1px solid var(--border);padding:9px 11px;text-align:left;vertical-align:top}
+  th{background:#1c212b;color:var(--accent);font-weight:600;white-space:nowrap}
+  tr:nth-child(even) td{background:#12161d}
+  ul,ol{margin:10px 0;padding-left:24px}
+  li{margin:5px 0}
+  .warn{background:#2a2109;border:1px solid #4d3a0d;border-left:3px solid var(--warn);
+    border-radius:0 8px 8px 0;padding:12px 18px;margin:16px 0}
+  .warn strong:first-child{color:var(--warn)}
+  .danger{background:#2a0f0f;border:1px solid #5a1a1a;border-left:3px solid var(--danger);
+    border-radius:0 8px 8px 0;padding:12px 18px;margin:16px 0}
+  .ok{background:#0d2216;border:1px solid #16442c;border-left:3px solid var(--accent2);
+    border-radius:0 8px 8px 0;padding:12px 18px;margin:16px 0}
+  .crosslink{
+    display:flex;flex-wrap:wrap;align-items:center;gap:8px;
+    background:linear-gradient(90deg,#17202b,#141b24);
+    border:1px solid var(--border);border-radius:10px;
+    padding:10px 16px;margin:0 0 24px;font-size:13.5px;color:var(--muted);
+  }
+  .crosslink strong{color:var(--fg)}
+  .crosslink .cl-label{
+    background:#1f2733;color:var(--accent2);border-radius:6px;
+    padding:1px 9px;font-size:12px;font-weight:600;
+  }
+  .crosslink .cl-sep{color:#3a424e}
+  .crosslink a{font-weight:600}
+  .badge{display:inline-block;background:#1f2733;color:var(--accent2);border-radius:6px;
+    padding:1px 9px;font-size:12px;margin-right:6px;font-weight:600}
+  .anchor{color:#3a424e;text-decoration:none;margin-left:8px;font-size:.7em}
+  .anchor:hover{color:var(--accent)}
+  .back{position:fixed;right:22px;bottom:22px;background:var(--accent);color:#0d1117;
+    text-decoration:none;font-weight:700;border-radius:50%;width:44px;height:44px;
+    display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px #0008;
+    font-size:19px}
+  .muted{color:var(--muted)}
+  @media(max-width:900px){
+    nav.toc{display:none}
+    main{padding:26px 16px 80px}
+  }
+</style>
+</head>
+<body>
+<a id="top"></a>
+<div class="layout">
+
+<nav class="toc">
+  <h2>目录</h2>
+  <a class="lv2" href="#c0">0. 目标、约束与前置知识</a>
+  <a class="lv3" href="#c0-1">0.1 最终效果</a>
+  <a class="lv3" href="#c0-2">0.2 核心原理</a>
+  <a class="lv3" href="#c0-3">0.3 硬性约束</a>
+  <a class="lv3" href="#c0-4">0.4 前置知识</a>
+  <a class="lv2" href="#c1">1. 全局设计与关键决策</a>
+  <a class="lv2" href="#c2">2. 系统架构与数据流</a>
+  <a class="lv3" href="#c2-1">2.1 全链路图</a>
+  <a class="lv3" href="#c2-2">2.2 线程模型</a>
+  <a class="lv3" href="#c2-3">2.3 类清单</a>
+  <a class="lv2" href="#c3">3. 采集层 CaptureEngine</a>
+  <a class="lv2" href="#c4">4. 流水线 OggSink</a>
+  <a class="lv2" href="#c5">5. 触觉声道 HapticMixer</a>
+  <a class="lv2" href="#c6">6. 原生编码 libhapticogg</a>
+  <a class="lv2" href="#c7">7. 播放与路由 SegmentPlayer</a>
+  <a class="lv2" href="#c8">8. 消除回声 SessionMuter</a>
+  <a class="lv2" href="#c9">9. 设备探测与总控/UI</a>
+  <a class="lv2" href="#c10">10. 构建配置</a>
+  <a class="lv2" href="#c11">11. 验证方法</a>
+  <a class="lv2" href="#c12">12. 故障排查手册</a>
+  <a class="lv2" href="#c13">13. 参数总表</a>
+  <a class="lv2" href="#c14">14. 从零构建执行清单</a>
+  <a class="lv2" href="#cA">附录 A. 数学定义</a>
+  <a class="lv2" href="#cB">附录 B. 许可</a>
+</nav>
+
+<main>
+
+<h1>音频耦合触觉播放器 · 实现规格书</h1>
+<div class="crosslink">
+  <span class="cl-label">本文档</span>
+  <strong>实现规格书（AI 构建蓝图）</strong>
+  <span class="cl-sep">·</span>
+  <span>另有面向普通读者的通俗原理版：</span>
+  <a href="implementation.html">实现原理（通俗版）→</a>
+</div>
+<div class="lead">
+<strong>面向 AI 的完整构建蓝图。</strong>目标是：任何具备 Android 开发能力的 AI 或工程师，
+<strong>仅凭本文件</strong>即可从零构建出一个功能完整的「把系统声音变成马达振动」的应用。<br>
+阅读方式：先读第 0 章理解目标与约束，再按第 2 章架构搭建骨架，然后逐模块（第 3~9 章）实现，
+最后按第 10~12 章构建、验证、排错。<br>
+术语：<em>触觉声道 / haptic channel</em> 指多声道音频中被送去驱动振动马达的最后一条声道；
+<em>内录 / playback capture</em> 指通过 MediaProjection 抓取系统正在播放的音频。
+</div>
+
+<hr>
+
+<h2 id="c0">0. 目标、约束与前置知识<a class="anchor" href="#c0">#</a></h2>
+
+<h3 id="c0-1">0.1 要实现的最终效果<a class="anchor" href="#c0-1">#</a></h3>
+<p>用户在手机上点击"开始"并授权后，<strong>任何正在播放的音乐/视频/游戏声音，都会同步驱动手机振动马达</strong>，且：</p>
+<ul>
+  <li>端到端延迟低（约 550~650ms，可调对齐）；</li>
+  <li>调整媒体音量时，振动<strong>依然有效</strong>（不会随音量变小而消失）；</li>
+  <li>低音不会"轰"，安静段落不会"丢失"；</li>
+  <li>可消除"原声"，只听重放（避免回声）。</li>
+</ul>
+
+<h3 id="c0-2">0.2 核心原理（一句话）<a class="anchor" href="#c0-2">#</a></h3>
+<p>Android 12（API 31）起支持「<strong>音频耦合触觉</strong>」：若一段音频被标记为"带触觉声道"，系统音频 HAL 会把该声道单独取出、映射为振动电机的驱动波形。因此实现路径是：</p>
+<blockquote><strong>抓取系统声音 → 计算一条"振感波形"作为第 3 声道 → 编码为合法的多声道 Ogg/Vorbis（打标记）→ 交回系统播放 → HAL 自动驱动马达。</strong></blockquote>
+<p><strong>关键点：不需要自己调用 <code>Vibrator</code>。振感是被"当成音频播出去"的。</strong></p>
+
+<h3 id="c0-3">0.3 硬性约束（必须满足，否则功能退化）<a class="anchor" href="#c0-3">#</a></h3>
+<table>
+<tr><th>约束</th><th>说明</th><th>不满足的后果</th></tr>
+<tr><td>系统版本</td><td>Android 12+（API 31）</td><td>无此机制，无法实现</td></tr>
+<tr><td>设备支持触觉播放</td><td>见 §9.1 探测方法</td><td>"能播不震"</td></tr>
+<tr><td>马达支持振幅控制</td><td><code>hasAmplitudeControl()</code></td><td>振感只有开/关</td></tr>
+<tr><td>屏幕录制授权</td><td>内录系统声音的前提，每次开始都需确认</td><td>抓不到音频</td></tr>
+<tr><td>特权 shell（可选）</td><td>静音原声需要读 <code>dumpsys audio</code></td><td>会有 ~600ms 回声（预期降级）</td></tr>
+</table>
+
+<h3 id="c0-4">0.4 前置知识<a class="anchor" href="#c0-4">#</a></h3>
+<ul>
+  <li>Android 音频：<code>AudioRecord</code>、<code>AudioPlaybackCaptureConfiguration</code>、<code>MediaProjection</code>、<code>MediaPlayer</code>、<code>AudioAttributes</code>、<code>AudioManager.setCommunicationDevice</code>。</li>
+  <li>音频编解码基础：PCM、采样率、声道、Vorbis 有损编码、Ogg 封装。</li>
+  <li>数字信号处理基础：高通滤波、RMS、动态压缩、削波。</li>
+  <li>JNI / NDK 基础：C++ 编译 <code>.so</code> 并被 Java 调用。</li>
+</ul>
+
+<hr>
+
+<h2 id="c1">1. 全局设计与关键决策<a class="anchor" href="#c1">#</a></h2>
+<p>这些决策是本项目"能用/不能用"的分水岭，<strong>改变其中任何一条都可能导致功能失效</strong>。</p>
+
+<h3>决策 1：为什么必须用 3 声道 + <code>ANDROID_HAPTIC=1</code> 标记</h3>
+<ul>
+  <li>输出音频固定为 <strong>3 声道</strong>：<code>[L][R][haptic]</code>，最后一条是振感。</li>
+  <li>必须在 Vorbis 注释头写入<strong>一条恰好等于</strong> <code>ANDROID_HAPTIC=1</code> 的 comment 条目。</li>
+  <li>平台匹配的是<strong>完整独立的一条</strong>，不是子串拼接。</li>
+</ul>
+<div class="danger">
+<strong>致命坑：</strong>若用 <code>vorbis_comment_add_tag(&amp;vc, "ANDROID_HAPTIC", "1")</code> 之类的键值拼接 API，
+写出的注释可能粘连成 <code>ENCODER=ENCODERANDROID_HAPTIC=1…</code>，平台匹配失败 →
+<strong>能播但完全不震动</strong>。<br>
+<strong>正确做法：</strong>用 <code>vorbis_comment_add(&amp;vc, "ANDROID_HAPTIC=1")</code> 写入完整字符串。
+</div>
+
+<h3>决策 2：为什么必须把声音路由到"听筒"</h3>
+<ul>
+  <li>在部分（尤其高通平台）设备上，音频 HAL <strong>只在音频流走听筒通话路径时</strong>才把第 3 声道转发给马达；走默认扬声器路径时，该声道被静默丢弃 → <strong>无震动</strong>。</li>
+  <li>因此播放时必须：
+    <ol>
+      <li><code>AudioManager.setMode(AudioManager.MODE_IN_COMMUNICATION)</code>；</li>
+      <li>找到内置听筒设备 <code>TYPE_BUILTIN_EARPIECE</code>；</li>
+      <li><code>AudioManager.setCommunicationDevice(earpiece)</code>；</li>
+      <li>播放器的 <code>AudioAttributes</code> 使用 <code>USAGE_VOICE_COMMUNICATION</code>（这是 <code>setCommunicationDevice()</code> 生效的前提）。</li>
+    </ol>
+  </li>
+  <li>副作用：声音从听筒出来、音量偏小，属正常。</li>
+  <li>路由必须<strong>周期巡检自愈</strong>：一旦流中断，系统会清掉通信设备，需重新设置。</li>
+</ul>
+
+<h3>决策 3：为什么无缝播放必须"共享同一个 audio session"</h3>
+<ul>
+  <li>用两个 <code>MediaPlayer</code> 接力（<code>cur.setNextMediaPlayer(next)</code>）实现 gapless。</li>
+  <li><strong>两个播放器必须使用同一个 audio session id</strong>，否则框架会拆掉旧 track，表现为"播约 90ms 就被 stop"，链条断裂、震动消失。</li>
+  <li>实现：维护一个 <code>sharedSessionId</code>，每个播放器 <code>setAudioSessionId(sharedSessionId)</code>，<code>prepare()</code> 后用 <code>getAudioSessionId()</code> 回读真实 id 并复用。</li>
+  <li>完成回调需兼容 <code>completed == cur</code> 和 <code>completed == next</code> 两种情况。</li>
+</ul>
+
+<h3>决策 4：为什么要"起播预缓冲"</h3>
+<ul>
+  <li>编码器（Vorbis）通常跟不上 1:1 实时速度，若只攒 1 段就起播，在第一个分片边界必然断流 → 路由被回收 → 震动消失。</li>
+  <li>正确做法：<strong>攒够至少 2 段再起播</strong>（<code>START_PREBUFFER = 2</code>）。</li>
+</ul>
+
+<h3>决策 5：如何让"调音量不失效 + 安静不丢 + 响段不炸"</h3>
+<p>三件事用一个"触觉声道生成器"解决（详见 §5）：</p>
+<ol>
+  <li><strong>高通塑形</strong>：滤掉低频，避免低音轰击马达；</li>
+  <li><strong>动态压缩</strong>（关键）：RMS 低于阈值原样通过（安静段不丢），高于阈值按比例压缩（响段不炸）；</li>
+  <li><strong>软削波</strong>：平滑限制峰值，避免硬削平的刺耳失真。</li>
+</ol>
+<div class="warn"><strong>注意：</strong>不要用"硬阈值门"来降噪——那会让安静段落整段丢失振动。</div>
+
+<h3>决策 6：延迟上限的保证</h3>
+<ul>
+  <li>采集块 → 编码队列 → 播放队列，<strong>每一级都是有界队列</strong>；</li>
+  <li><strong>队列满时丢弃最旧的元素</strong>，而不是阻塞等待；</li>
+  <li>这样即使某环节变慢，端到端延迟也不会无限增长。</li>
+</ul>
+
+<hr>
+
+<h2 id="c2">2. 系统架构与数据流<a class="anchor" href="#c2">#</a></h2>
+
+<h3 id="c2-1">2.1 全链路图<a class="anchor" href="#c2-1">#</a></h3>
+<pre><code>┌─────────────────────────────────────────────────────────────┐
+│ 系统正在播放的音频（音乐/视频/游戏…）                          │
+└───────────────────────────┬─────────────────────────────────┘
+                            │ MediaProjection 授权
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│ CaptureEngine                                                │
+│  AudioRecord(内录) 48kHz/16bit/立体声                        │
+│  线程优先级 URGENT_AUDIO                                     │
+│  每 4800 帧(=100ms) 一块，整块读取(readFully)                │
+│  有界队列(4)，满则丢最旧                                     │
+└───────────────────────────┬─────────────────────────────────┘
+                            │ 100ms 块
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│ OggSink（流水线编排）                                        │
+│  累积块 → 满 24000 帧(=500ms) 成一段                         │
+│  每段调用 HapticMixer 生成 [L][R][haptic]                    │
+│  有界编码队列，编码线程消费                                  │
+└───────────────────────────┬─────────────────────────────────┘
+                            │ 500ms 段（3声道 PCM）
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│ HapticMixer（触觉声道生成）                                  │
+│  mono = (L+R) * OUTPUT_SCALE                                 │
+│  → 级联高通滤波 → 混回少量低频(LOW_SHELF)                    │
+│  → 计算 RMS → 动态压缩 → 软削波                              │
+│  out = [L, R, haptic]                                        │
+└───────────────────────────┬─────────────────────────────────┘
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│ libhapticogg.so（JNI + libVorbis + libogg）                  │
+│  vorbis_encode_init_vbr(3声道, 48000, quality)               │
+│  vorbis_comment_add("ANDROID_HAPTIC=1")  ← 关键标记          │
+│  写出 seg_%06d.ogg                                           │
+└───────────────────────────┬─────────────────────────────────┘
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│ SegmentRing（环形文件槽）   seg_%06d.ogg，槽位复用           │
+└───────────────────────────┬─────────────────────────────────┘
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│ SegmentPlayer（无缝播放 + 路由）                             │
+│  双 MediaPlayer 接力(setNextMediaPlayer)                     │
+│  共享 audio session                                          │
+│  USAGE_VOICE_COMMUNICATION + 路由到听筒                      │
+│  权限策略：ALLOW_CAPTURE_BY_NONE（防回环）                   │
+│  50ms 巡检路由，掉了自动重设                                 │
+└───────────────────────────┬─────────────────────────────────┘
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 音频 HAL：分离第 3 声道 → 驱动振动马达                       │
+└─────────────────────────────────────────────────────────────┘
+
+旁路：SessionMuter 周期性把"外部原声会话"音量压到 -80dB（消除回声）</code></pre>
+
+<h3 id="c2-2">2.2 线程模型<a class="anchor" href="#c2-2">#</a></h3>
+<table>
+<tr><th>线程</th><th>职责</th><th>优先级</th></tr>
+<tr><td>capture-read</td><td>AudioRecord 读取 + 整块组装</td><td>URGENT_AUDIO</td></tr>
+<tr><td>（调用线程）</td><td><code>onBlock</code> → 混音 → 累积成段</td><td>继承 capture</td></tr>
+<tr><td>ogg-encode</td><td>取段 → 调 JNI 编码 → 入播放队列</td><td>默认</td></tr>
+<tr><td>main/UI Handler</td><td>50ms 播放泵、路由巡检、状态刷新</td><td>UI</td></tr>
+<tr><td>muteTicker (main)</td><td>每 1500ms 扫描并静音外部会话</td><td>UI</td></tr>
+</table>
+
+<h3 id="c2-3">2.3 类清单（建议的模块划分）<a class="anchor" href="#c2-3">#</a></h3>
+<table>
+<tr><th>类</th><th>职责</th></tr>
+<tr><td><code>EngineConfig</code></td><td>全部不可变常量（参数总表）</td></tr>
+<tr><td><code>EngineSettings</code></td><td>运行期可调参数（SharedPreferences 持久化）</td></tr>
+<tr><td><code>CaptureEngine</code></td><td>MediaProjection + AudioRecord 采集</td></tr>
+<tr><td><code>HapticMixer</code></td><td>触觉声道生成（高通+压缩+削波）</td></tr>
+<tr><td><code>AudioDelayLine</code></td><td>音/触觉对齐的环形缓冲</td></tr>
+<tr><td><code>OggSink</code></td><td>流水线编排（累积→混音→编码→入队）</td></tr>
+<tr><td><code>SegmentRing</code></td><td>环形文件槽位管理</td></tr>
+<tr><td><code>SegmentPlayer</code></td><td>双 MediaPlayer 接力播放 + 听筒路由</td></tr>
+<tr><td><code>SessionMuter</code></td><td>原声静音（消除回声）</td></tr>
+<tr><td><code>PrivilegedShell</code></td><td>su / sh 特权命令封装</td></tr>
+<tr><td><code>Haptics</code></td><td>设备能力探测</td></tr>
+<tr><td><code>HapticOgg</code></td><td>JNI 声明（加载 <code>libhapticogg</code>）</td></tr>
+<tr><td><code>EngineService</code></td><td>前台服务，总控全链路</td></tr>
+<tr><td><code>MainActivity</code></td><td>控制面板 UI + 权限请求</td></tr>
+</table>
+
+<hr>
+
+<h2 id="c3">3. 模块 1：采集层 CaptureEngine<a class="anchor" href="#c3">#</a></h2>
+
+<h3>3.1 职责</h3>
+<p>通过 MediaProjection 获取内录凭据，用 AudioRecord 抓取系统音频，切成固定大小块交给下游。</p>
+
+<h3>3.2 API 调用序列</h3>
+<pre><code><span class="c">// 1) 构造内录配置（只抓媒体类用途）</span>
+AudioPlaybackCaptureConfiguration config =
+    new AudioPlaybackCaptureConfiguration.Builder(mediaProjection)
+        .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
+        .addMatchingUsage(AudioAttributes.USAGE_GAME)
+        .addMatchingUsage(AudioAttributes.USAGE_UNKNOWN)
+        .addMatchingUsage(AudioAttributes.USAGE_ASSISTANT)
+        .build();
+
+<span class="c">// 2) 计算缓冲</span>
+<span class="k">int</span> minBuf = AudioRecord.getMinBufferSize(<span class="m">48000</span>,
+        AudioFormat.CHANNEL_IN_STEREO, AudioFormat.ENCODING_PCM_16BIT);
+<span class="k">int</span> blockBytes = CAPTURE_BLOCK_FRAMES * <span class="m">2</span> <span class="c">/*ch*/</span> * <span class="m">2</span> <span class="c">/*bytes*/</span>;
+<span class="k">int</span> bufSize = max(minBuf * <span class="m">2</span>, blockBytes * <span class="m">4</span>);
+
+<span class="c">// 3) 创建 AudioRecord</span>
+AudioRecord record = <span class="k">new</span> AudioRecord.Builder()
+        .setAudioPlaybackCaptureConfig(config)
+        .setAudioFormat(<span class="k">new</span> AudioFormat.Builder()
+                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                .setSampleRate(<span class="m">48000</span>)
+                .setChannelMask(AudioFormat.CHANNEL_IN_STEREO)
+                .build())
+        .setBufferSizeInBytes(bufSize)
+        .build();
+
+<span class="c">// 4) 校验状态</span>
+<span class="k">if</span> (record.getState() != AudioRecord.STATE_INITIALIZED) { <span class="c">/* 失败处理 */</span> }
+
+<span class="c">// 5) 读取线程</span>
+Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO);
+record.startRecording();</code></pre>
+
+<h3>3.3 关键实现细节</h3>
+<ul>
+  <li><strong>整块读取 <code>readFully</code></strong>：<code>AudioRecord.read</code> 可能只返回部分数据，必须循环补齐，直到取满 <code>frames * 2</code> 个 short，否则下游帧数漂移、段长不准。</li>
+  <li><strong>块大小</strong>：<code>CAPTURE_BLOCK_FRAMES = 4800</code>（48000Hz 下 = 100ms）。</li>
+  <li><strong>队列背压</strong>：<code>ArrayBlockingQueue(CAPTURE_QUEUE=4)</code>；<code>offer</code> 失败时 <code>poll()</code> 丢最旧再 <code>offer</code>（<strong>不阻塞</strong>，保证延迟有界）。</li>
+  <li><strong>数据拷贝</strong>：块数组会被复用，必须 <code>System.arraycopy</code> 出副本再入队。</li>
+  <li><strong>失败回调</strong>：<code>onCaptureError(msg)</code> 由上层停止整条流水线。</li>
+</ul>
+
+<h3>3.4 为什么按 Usage 过滤</h3>
+<p>从 Android 10 起录制其它应用音频受管控，<code>AudioPlaybackCaptureConfiguration</code> 允许按 Usage 白名单筛选。<strong>只匹配 media/game/unknown/assistant，刻意排除通话、通知等隐私音频</strong>，既是合规要求，也避免把系统提示音也变成振动。</p>
+
+<hr>
+
+<h2 id="c4">4. 模块 2：流水线编排 OggSink<a class="anchor" href="#c4">#</a></h2>
+
+<h3>4.1 职责</h3>
+<p>把 100ms 小块累积成 500ms 段，调用混音器生成 3 声道，再交给编码线程。</p>
+
+<h3>4.2 数据累积逻辑</h3>
+<pre><code>segStereo : short[SEGMENT_FRAMES * 2]     <span class="c">// 原始立体声缓冲</span>
+segOut3   : short[SEGMENT_FRAMES * 3]     <span class="c">// 3声道输出缓冲</span>
+segFill   : 当前已累积帧数
+
+onBlock(pcm, frames):
+    <span class="k">for</span> i in frames:                      <span class="c">// 把本块原始立体声暂存</span>
+        segStereo[...] = pcm[i*2], pcm[i*2+1]
+    block3 = new short[frames * 3]
+    mixer.mix(pcm, frames, block3)        <span class="c">// 生成触觉声道</span>
+    copy block3 → segOut3[segFill*3 ..]
+    segFill += frames
+    <span class="k">if</span> segFill &gt;= SEGMENT_FRAMES: flushSegment()   <span class="c">// 满 500ms 出段</span></code></pre>
+
+<h3>4.3 编码线程</h3>
+<pre><code>encodeLoop():
+    <span class="k">while</span> running:
+        data = encodeQueue.take()                 <span class="c">// 阻塞取段</span>
+        seq  = segmentSeq.getAndIncrement()
+        out  = ring.fileFor(seq)                  <span class="c">// 环形槽位文件名</span>
+        t0   = nanoTime()
+        rc   = HapticOgg.nativeEncode(out.path, data,
+                    SEGMENT_FRAMES, 3, 48000, quality)
+        encodeUs = (nanoTime()-t0)/1000
+        <span class="k">if</span> rc == 0: player.enqueue(out)</code></pre>
+<ul>
+  <li>编码队列同样有界并丢最旧。</li>
+  <li>记录 <code>encodeUs</code>（单段编码耗时）供 UI 显示——它是判断"机器能否实时跟得上"的关键指标：<strong>若 <code>encodeUs</code> 接近或超过 500000（即 500ms），必然断震，需降低 quality 或增大分片。</strong></li>
+</ul>
+
+<h3>4.4 参数</h3>
+<table>
+<tr><th>参数</th><th>值</th><th>含义</th></tr>
+<tr><td><code>SEGMENT_MS</code></td><td>500</td><td>分片时长</td></tr>
+<tr><td><code>SEGMENT_FRAMES</code></td><td>24000</td><td>= 48000 * 500/1000</td></tr>
+<tr><td><code>OUT_CHANNELS</code></td><td>3</td><td>L / R / haptic</td></tr>
+<tr><td><code>ENCODE_QUALITY</code></td><td>0.5</td><td>Vorbis VBR 质量（0.05~1.0）</td></tr>
+<tr><td><code>MAX_PENDING</code></td><td>6</td><td>播放队列上限</td></tr>
+</table>
+
+<hr>
+
+<h2 id="c5">5. 模块 3：触觉声道生成 HapticMixer（最关键算法模块）<a class="anchor" href="#c5">#</a></h2>
+
+<h3>5.1 职责</h3>
+<p>把一段立体声 <code>[L,R]</code> 转成 3 声道 <code>[L,R,haptic]</code>，其中 haptic 是驱动马达的波形。</p>
+
+<h3>5.2 完整算法（按顺序，逐帧先做 shape、再按块算压缩）</h3>
+<pre><code>输入: stereo[frames*2], frames
+输出: out3[frames*3], 返回 haptic 峰值(0..32767)
+
+<span class="c">=== 阶段 A：逐帧塑形 ===</span>
+<span class="k">for</span> i in frames:
+    l = stereo[i*2]; r = stereo[i*2+1]
+    mono = (l + r) * OUTPUT_SCALE                    <span class="c">// 立体声求和 + 固定增益</span>
+
+    <span class="k">if</span> HAPTIC_HIGHPASS:
+        x = mono
+        <span class="k">for</span> stage in 0..HIGHPASS_ORDER-1:            <span class="c">// 级联一阶高通</span>
+            y = hpA * (prevOut[stage] + x - prevIn[stage])
+            prevIn[stage] = x; prevOut[stage] = y
+            x = y
+        mono = x + LOW_SHELF * (l + r) * OUTPUT_SCALE <span class="c">// 混回少量原始低频</span>
+
+    shaped[i] = mono
+    sumSq += mono * mono
+
+<span class="c">=== 阶段 B：按块计算压缩增益 ===</span>
+rms = sqrt(sumSq / frames) / 32768.0
+
+<span class="k">if</span> HAPTIC_COMPRESS and rms &gt; COMPRESS_THRESHOLD and rms &gt; 1e-6:
+    over       = COMPRESS_THRESHOLD / rms
+    target     = pow(over, 1 - 1/COMPRESS_RATIO)      <span class="c">// 目标增益 &lt; 1</span>
+    coef       = (target &lt; compGain) ? COMPRESS_ATTACK : COMPRESS_RELEASE
+    compGain  += coef * (target - compGain)           <span class="c">// 平滑</span>
+<span class="k">else</span>:
+    compGain  += COMPRESS_RELEASE * (1 - compGain)    <span class="c">// 缓慢恢复到 1.0</span>
+
+gated = rms &lt; HAPTIC_GATE_RMS                          <span class="c">// 近静音</span>
+
+<span class="c">=== 阶段 C：逐帧输出 ===</span>
+<span class="k">for</span> i in frames:
+    raw = shaped[i] * compGain
+    <span class="k">if</span> gated:      h = 0
+    <span class="k">else if</span> soft:  h = softClip(raw)
+    <span class="k">else</span>:          h = hardClip((int)raw)
+
+    out3[i*3+0] = muteLr ? 0 : l
+    out3[i*3+1] = muteLr ? 0 : r
+    out3[i*3+2] = h
+    hapticPeak = max(hapticPeak, abs(h))</code></pre>
+
+<h3>5.3 高通滤波系数</h3>
+<pre><code>R = 1 / (2π * fc / fs)
+a = R / (R + 1)</code></pre>
+<ul>
+  <li><code>fc = HAPTIC_HIGHPASS_HZ</code>（默认 250）</li>
+  <li><code>fs = 48000</code></li>
+  <li>级联 N 阶（默认 2）→ 滚降 N×6 dB/倍频。</li>
+</ul>
+
+<h3>5.4 软削波（有理函数近似 tanh）</h3>
+<pre><code>f  = clamp(x/32768, -LIMIT, +LIMIT)      <span class="c">// LIMIT = SOFT_CLIP_LIMIT (0.99)</span>
+f2 = f*f
+y  = f * (f2 + 27) / (9*f2 + 27)
+out= clamp((int)(y*32767), -32768, 32767)</code></pre>
+
+<h3>5.5 参数表（默认值，可按听感调整）</h3>
+<table>
+<tr><th>参数</th><th>默认</th><th>作用</th><th>调大</th><th>调小</th></tr>
+<tr><td><code>HAPTIC_OUTPUT_SCALE</code></td><td>0.65</td><td>触觉总电平</td><td>更强（易打底）</td><td>更弱</td></tr>
+<tr><td><code>HAPTIC_GATE_RMS</code></td><td>0.02</td><td>静音门槛</td><td>安静段易丢</td><td>底噪可能微震</td></tr>
+<tr><td><code>HAPTIC_HIGHPASS_HZ</code></td><td>250</td><td>高通截止</td><td>更低频、更"脆"</td><td>低频更多、更"轰"</td></tr>
+<tr><td><code>HAPTIC_HIGHPASS_ORDER</code></td><td>2</td><td>高通阶数</td><td>低频更干净</td><td>低频残留更多</td></tr>
+<tr><td><code>HAPTIC_LOW_SHELF</code></td><td>0.12</td><td>低频混回量</td><td>力度更强</td><td>更"脆"</td></tr>
+<tr><td><code>SOFT_CLIP_LIMIT</code></td><td>0.99</td><td>软削波上限</td><td>更响（易失真）</td><td>更保守</td></tr>
+<tr><td><code>COMPRESS_THRESHOLD</code></td><td>0.35</td><td>压缩阈值</td><td>更少压缩（易打底）</td><td>更早压缩</td></tr>
+<tr><td><code>COMPRESS_RATIO</code></td><td>3.0</td><td>压缩比</td><td>压得更狠</td><td>压得更轻</td></tr>
+<tr><td><code>COMPRESS_ATTACK</code></td><td>0.4</td><td>压缩响应</td><td>更快（可能抽吸）</td><td>更平滑</td></tr>
+<tr><td><code>COMPRESS_RELEASE</code></td><td>0.08</td><td>恢复响应</td><td>恢复更快</td><td>更平滑</td></tr>
+</table>
+
+<h3>5.6 为什么要这套算法（给 AI 的设计意图）</h3>
+<ul>
+  <li><strong>单纯复制原声</strong>：低音能量最大 → 马达被低音独占、轰击感强。</li>
+  <li><strong>只用硬门槛降噪</strong>：安静段落（尤其古典、民谣）整段没有振动 → "丢音频"。</li>
+  <li><strong>只用硬削波</strong>：峰值截断 → 刺耳"打底"失真。</li>
+  <li><strong>本方案</strong>：高通去掉低音霸占 + 压缩平衡动态（安静保留、响段压住）+ 软削波平滑峰值，最终得到"均衡、连续、不打底"的振感，适合手机放桌面时的共振体验。</li>
+</ul>
+
+<hr>
+
+<h2 id="c6">6. 模块 4：原生编码 libhapticogg.so<a class="anchor" href="#c6">#</a></h2>
+
+<h3>6.1 依赖</h3>
+<ul>
+  <li>libogg 1.3.5（Xiph.Org，BSD）</li>
+  <li>libvorbis 1.3.7（Xiph.Org，BSD）</li>
+</ul>
+<p>两者源码可直接内置于 <code>third_party/</code>。</p>
+
+<h3>6.2 JNI 契约</h3>
+<pre><code><span class="c">// Java 侧</span>
+<span class="k">public static native int</span> nativeEncode(String path, short[] pcm,
+        <span class="k">int</span> frames, <span class="k">int</span> channels, <span class="k">int</span> sampleRate, <span class="k">float</span> quality);
+<span class="c">// 返回 0 成功，负数失败</span>
+<span class="c">// pcm 长度必须 &gt;= frames * channels，交错排列</span></code></pre>
+<p>C++ 侧函数名（严格按包名映射）：</p>
+<pre><code>Java_com_gaolou_boneconduction_nativebridge_HapticOgg_nativeEncode</code></pre>
+<p class="muted">（若你的包名不同，函数名前缀必须相应改变。）</p>
+
+<h3>6.3 编码流程（决定性细节已标注）</h3>
+<pre><code>vorbis_info_init(&amp;vi);
+vorbis_encode_init_vbr(&amp;vi, channels, sampleRate, quality);   <span class="c">// VBR</span>
+
+vorbis_comment_init(&amp;vc);
+vorbis_comment_add(&amp;vc, <span class="s">"ENCODER=vorbis"</span>);
+<span class="k">if</span> (channels == 3)
+    vorbis_comment_add(&amp;vc, <span class="s">"ANDROID_HAPTIC=1"</span>);   <span class="m">// ★★ 必须完整独立一条</span>
+
+vorbis_analysis_init(&amp;vd, &amp;vi);
+vorbis_block_init(&amp;vd, &amp;vb);
+ogg_stream_init(&amp;os, rand() &amp; 0x7fffffff);
+
+<span class="c">// 写三个头页，用 flush 立即刷盘（降低首播延迟）</span>
+vorbis_analysis_headerout(&amp;vd, &amp;vc, &amp;h0, &amp;h1, &amp;h2);
+ogg_stream_packetin(&amp;os, &amp;h0); ...packetin(&amp;os, &amp;h2);
+flush all pages → file
+
+<span class="c">// 分块喂入：每块 1024 帧，归一化到 float[-1,1]</span>
+<span class="k">while</span> (remaining &gt; 0) {
+    chunk = min(remaining, 1024);
+    <span class="k">float</span> **buffer = vorbis_analysis_buffer(&amp;vd, chunk);
+    <span class="k">for</span> i in chunk:
+        <span class="k">for</span> c in channels:
+            buffer[c][i] = (<span class="k">float</span>)pcm[(pos+i)*channels + c] / 32768.0f;
+    vorbis_analysis_wrote(&amp;vd, chunk);
+    <span class="c">// 排空已就绪的包写文件</span>
+    <span class="k">while</span> (vorbis_analysis_blockout(&amp;vd, &amp;vb) == 1) {
+        vorbis_analysis(&amp;vb, nullptr);
+        vorbis_bitrate_addblock(&amp;vb);
+        <span class="k">while</span> (vorbis_bitrate_flushpacket(&amp;vd, &amp;op)) {
+            ogg_stream_packetin(&amp;os, &amp;op);
+            pageout → file
+        }
+    }
+}
+vorbis_analysis_wrote(&amp;vd, 0);   <span class="c">// 结束流</span>
+drain + flush final page</code></pre>
+
+<h3>6.4 线程安全</h3>
+<p>用全局 <code>std::mutex</code> 包住整个 <code>nativeEncode</code>（本项目单编码线程，加锁更稳）。</p>
+
+<h3>6.5 资源释放顺序（勿漏）</h3>
+<pre><code>fclose(f);
+ogg_stream_clear(&amp;os);
+vorbis_block_clear(&amp;vb);
+vorbis_dsp_clear(&amp;vd);
+vorbis_comment_clear(&amp;vc);
+vorbis_info_clear(&amp;vi);</code></pre>
+
+<h3>6.6 链接注意</h3>
+<div class="warn">
+若用 C++ 运行时，务必静态链接 C++ 库（如 <code>-static-libstdc++</code>），否则 <code>.so</code> 会依赖
+<code>libc++_shared.so</code>，而 APK 未打包该库时运行期报
+<code>UnsatisfiedLinkError: library "libc++_shared.so" not found</code>。
+</div>
+
+<hr>
+
+<h2 id="c7">7. 模块 5：播放与路由 SegmentPlayer<a class="anchor" href="#c7">#</a></h2>
+
+<h3>7.1 状态</h3>
+<pre><code>pending      : ArrayDeque&lt;File&gt;        <span class="c">// 待播段队列</span>
+cur, next    : MediaPlayer             <span class="c">// 当前 / 下一个</span>
+sharedSessionId : int                  <span class="c">// 全段共享的 audio session</span>
+earpiece     : AudioDeviceInfo         <span class="c">// 内置听筒</span>
+running      : boolean
+playedCount, droppedCount : long</code></pre>
+
+<h3>7.2 播放泵（每 50ms 执行）</h3>
+<pre><code>pump():
+    ensureEarpieceRouting()   <span class="c">// 路由掉了就重设（自愈）</span>
+    advanceIfNeeded()         <span class="c">// 需要则启动新段</span>
+    postDelayed(pump, 50)</code></pre>
+
+<h3>7.3 启动一段（含预缓冲）</h3>
+<pre><code>advanceIfNeeded():
+    <span class="k">if</span> cur != null: <span class="k">return</span>
+    <span class="k">if</span> pending.size() &lt; START_PREBUFFER(=2): <span class="k">return</span>   <span class="m">// ★ 预缓冲</span>
+    f = pending.poll()
+    cur = open(f)
+    cur.setOnCompletionListener(onSegmentCompleted)
+    cur.start()
+    playedCount++
+    preloadNext()</code></pre>
+
+<h3>7.4 预挂下一段（gapless 接力）</h3>
+<pre><code>preloadNext():
+    <span class="k">if</span> next != null: <span class="k">return</span>
+    f = pending.poll(); <span class="k">if</span> f == null: <span class="k">return</span>
+    next = open(f)
+    next.setOnCompletionListener(onSegmentCompleted)
+    cur.setNextMediaPlayer(next)     <span class="m">// ★ 平台负责无缝切换</span></code></pre>
+
+<h3>7.5 完成回调（必须兼容两种身份）</h3>
+<pre><code>onSegmentCompleted(completed):
+    <span class="k">if</span> completed == cur:  release(cur); cur = next; next = null
+    <span class="k">else if</span> completed == next: release(cur); cur = next; next = null
+    <span class="k">else</span>: <span class="k">return</span>
+    <span class="k">if</span> cur != null:
+        cur.setOnCompletionListener(onSegmentCompleted)
+        playedCount++
+        preloadNext()
+    <span class="c">// 若队列空且无后继，释放并置空，等待新数据时重启</span>
+    <span class="k">if</span> cur != null and next == null and pending.isEmpty():
+        release(cur); cur = null</code></pre>
+
+<h3>7.6 打开一个播放器</h3>
+<pre><code>open(file):
+    mp = <span class="k">new</span> MediaPlayer()
+    attrs = <span class="k">new</span> AudioAttributes.Builder()
+        .setUsage(USAGE_VOICE_COMMUNICATION)        <span class="m">// ★ 听筒路由前提</span>
+        .setContentType(CONTENT_TYPE_SPEECH)
+        .setAllowedCapturePolicy(ALLOW_CAPTURE_BY_NONE)  <span class="m">// ★ 防回环</span>
+        .setHapticChannelsMuted(false)              <span class="m">// ★ 允许触觉声道输出</span>
+        .build()
+    mp.setAudioAttributes(attrs)
+    mp.setAudioSessionId(sharedSessionId)           <span class="m">// ★ 共享 session</span>
+    mp.setDataSource(file.path)
+    mp.prepare()
+    sharedSessionId = mp.getAudioSessionId()        <span class="c">// 回读并复用</span>
+    <span class="k">return</span> mp</code></pre>
+
+<h3>7.7 听筒路由</h3>
+<pre><code>routeToEarpiece():
+    audioManager.setMode(MODE_IN_COMMUNICATION)
+
+ensureEarpieceRouting():                            <span class="c">// 周期调用，自愈</span>
+    <span class="k">if</span> earpiece == null:
+        <span class="k">for</span> d in audioManager.getDevices(GET_DEVICES_OUTPUTS):
+            <span class="k">if</span> d.type == TYPE_BUILTIN_EARPIECE: earpiece = d; <span class="k">break</span>
+    <span class="k">if</span> earpiece == null: <span class="k">return</span>
+    active = audioManager.getCommunicationDevice()
+    <span class="k">if</span> active == null or active.id != earpiece.id:
+        audioManager.setCommunicationDevice(earpiece)</code></pre>
+
+<h3>7.8 入队与背压</h3>
+<pre><code>enqueue(file):
+    <span class="k">while</span> pending.size() &gt;= MAX_PENDING(=6):
+        dropped = pending.poll(); droppedCount++; dropped.delete()
+    pending.offer(file)</code></pre>
+
+<h3>7.9 停止</h3>
+<p>释放两个播放器、清空队列、<code>clearCommunicationDevice()</code>、<code>setMode(MODE_NORMAL)</code>。</p>
+
+<hr>
+
+<h2 id="c8">8. 模块 6：消除回声 SessionMuter + 特权 shell<a class="anchor" href="#c8">#</a></h2>
+
+<h3>8.1 问题</h3>
+<p>"抓取 → 重放"意味着用户会同时听到：原始声 + 约 500ms 延迟的重放声 → 回声。需要在<strong>会话层</strong>把外部应用的原声压掉。</p>
+
+<h3>8.2 实现方式</h3>
+<pre><code>poll(ownSessionSupplier):
+    foreign = discoverForeignSessions()   <span class="c">// 读 dumpsys audio 解析会话 id</span>
+    <span class="k">if</span> foreign == null: active = false; <span class="k">return</span>   <span class="c">// 无特权 → 降级</span>
+    释放已消失的会话效果
+    对每个新外部会话 attachMute(sessionId)
+    active = 是否挂上了至少一个</code></pre>
+<p><strong>静音手段（按优先级）</strong>：</p>
+<ol>
+  <li><code>DynamicsProcessing</code>：<code>Config.setInputGainAllChannelsTo(-80f)</code>，<code>setEnabled(true)</code>。</li>
+  <li>回退：反射构造隐藏的 <code>android.media.audiofx.Volume</code>，<code>setParameter(PARAM_MUTE=2, 1)</code> + <code>setParameter(PARAM_LEVEL=0, -9600)</code>（-96dB）。</li>
+</ol>
+<p><strong>自我保护</strong>：绝不静音自己的播放会话（用 <code>ownSessionIds</code> 排除）。</p>
+
+<h3>8.3 特权 shell 探测</h3>
+<pre><code>detect():
+    尝试 su -c id          → 输出含 <span class="s">"uid=0"</span>  → 机制 = <span class="s">"su"</span>
+    否则 sh -c <span class="s">"dumpsys audio | head -n 1"</span> → 含 <span class="s">"Audio"</span> → 机制 = <span class="s">"shizuku"</span>
+    否则 unavailable（降级：静音不生效、会有回声，属预期）</code></pre>
+<ul>
+  <li>会话解析用正则从 <code>dumpsys audio</code> 输出里提取 sessionId 与 uid。</li>
+  <li>轮询周期 <code>MUTE_POLL_MS = 1500</code>。</li>
+</ul>
+
+<hr>
+
+<h2 id="c9">9. 模块 7：设备能力探测与总控/UI<a class="anchor" href="#c9">#</a></h2>
+
+<h3>9.1 设备能力探测（Haptics）</h3>
+<pre><code><span class="c">// 触觉播放是否支持（不支持则"能播不震"）</span>
+<span class="k">boolean</span> hapticSupported = vibrator.areAllPrimitivesSupported();
+<span class="c">// 马达是否支持振幅控制（不支持则只有开/关）</span>
+<span class="k">boolean</span> amplitudeControl = vibrator.hasAmplitudeControl();</code></pre>
+<p>Android 12+ 通过 <code>VibratorManager.getDefaultVibrator()</code> 取 Vibrator。<strong>启动时探测并提示用户</strong>，避免用户误以为软件故障。</p>
+
+<h3>9.2 前台服务 EngineService</h3>
+<ul>
+  <li>使用 <code>startForeground</code>，类型包含 <code>FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION</code>（Android 14+ 需显式声明，否则崩溃）。</li>
+  <li>持有 <code>PARTIAL_WAKE_LOCK</code>，息屏继续运行。</li>
+  <li>注册 <code>MediaProjection.Callback.onStop()</code>：系统停止录屏时要优雅收尾。</li>
+  <li>启动顺序：<code>ring.clean()</code> → <code>capture.start()</code> → <code>sink.start()</code> → 启动静音 ticker。</li>
+  <li>通过 <code>StatusListener</code> 把状态（是否运行、能力、队列、编码耗时、触觉电平）推给 UI。</li>
+</ul>
+
+<h3>9.3 UI（MainActivity）建议控件</h3>
+<ul>
+  <li>开始/停止按钮；首次开始请求 <strong>录音权限</strong> + <strong>通知权限</strong>，再请求 <strong>MediaProjection</strong>。</li>
+  <li>开关：静音原声、软削波。</li>
+  <li>滑杆：对齐延迟（±2000ms）。</li>
+  <li>状态区：能力探测结果、队列长度、编码耗时、触觉电平。</li>
+  <li>建议提供"参数总表"显示，便于调音。</li>
+</ul>
+
+<hr>
+
+<h2 id="c10">10. 构建配置<a class="anchor" href="#c10">#</a></h2>
+
+<h3>10.1 Android 工程</h3>
+<pre><code>android {
+    namespace <span class="s">'com.gaolou.boneconduction'</span>
+    compileSdk <span class="m">34</span>
+    defaultConfig {
+        applicationId <span class="s">"com.gaolou.boneconduction"</span>
+        minSdk <span class="m">31</span>                      <span class="m">// ★ Android 12 起</span>
+        targetSdk <span class="m">34</span>
+        ndk { abiFilters <span class="s">'arm64-v8a'</span>, <span class="s">'armeabi-v7a'</span> }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}</code></pre>
+
+<h3>10.2 原生库构建（两种方式）</h3>
+<p><span class="badge">方式 A</span>标准 CMake（正常环境推荐）</p>
+<p><code>app/src/main/cpp/CMakeLists.txt</code> 大致：</p>
+<pre><code>cmake_minimum_required(VERSION 3.22)
+project(hapticogg)
+add_library(hapticogg SHARED haptic_ogg.cpp
+    ${OGG_SRC}/bitwise.c ${OGG_SRC}/framing.c
+    ${VORBIS_SRC}/... <span class="c">/* libvorbis 全部 .c */</span>)
+target_include_directories(hapticogg PRIVATE
+    ${OGG_INC} ${VORBIS_INC})
+find_library(log-lib log)
+target_link_libraries(hapticogg ${log-lib})</code></pre>
+<p>并在 <code>build.gradle</code> 开启：</p>
+<pre><code>externalNativeBuild { cmake { path <span class="s">"src/main/cpp/CMakeLists.txt"</span> } }</code></pre>
+<p><span class="badge">方式 B</span>离线 clang 直编（CMake 不可用时）</p>
+<p>写脚本直接用 NDK clang 编译 libogg + libvorbis + JNI，产出 <code>app/src/main/jniLibs/&lt;abi&gt;/libhapticogg.so</code>，Gradle 直接打包。<strong>务必静态链接 C++ 运行时</strong>（<code>-static-libstdc++</code>），详见 §6.6。</p>
+
+<h3>10.3 权限（AndroidManifest）</h3>
+<pre><code>&lt;uses-permission android:name=<span class="s">"android.permission.RECORD_AUDIO"</span>/&gt;
+&lt;uses-permission android:name=<span class="s">"android.permission.FOREGROUND_SERVICE"</span>/&gt;
+&lt;uses-permission android:name=<span class="s">"android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"</span>/&gt;
+&lt;uses-permission android:name=<span class="s">"android.permission.POST_NOTIFICATIONS"</span>/&gt;
+&lt;uses-permission android:name=<span class="s">"android.permission.WAKE_LOCK"</span>/&gt;
+<span class="c">&lt;!-- 触觉相关（系统能力，无需自定义权限） --&gt;</span></code></pre>
+
+<h3>10.4 环境版本参考</h3>
+<table>
+<tr><th>组件</th><th>版本</th></tr>
+<tr><td>JDK</td><td>17</td></tr>
+<tr><td>Android SDK</td><td>platform 34</td></tr>
+<tr><td>NDK</td><td>r26/r27（任一可用版本）</td></tr>
+<tr><td>Gradle</td><td>8.x</td></tr>
+</table>
+
+<hr>
+
+<h2 id="c11">11. 验证方法（构建后如何确认可用）<a class="anchor" href="#c11">#</a></h2>
+
+<h3>11.1 分阶段验证</h3>
+<ol>
+  <li><strong>编译验证</strong>：<code>./gradlew :app:assembleDebug</code> 成功，产出 APK。</li>
+  <li><strong>SO 自包含验证</strong>：确认 <code>.so</code> 不依赖 <code>libc++_shared.so</code>（用 <code>llvm-readelf -d libhapticogg.so | grep NEEDED</code>，应只剩系统库）。</li>
+  <li><strong>Comment 验证</strong>：编码一段后，检查生成的 <code>.ogg</code> 的 Vorbis comment 里存在<strong>独立的一条 <code>ANDROID_HAPTIC=1</code></strong>（可用 <code>ffprobe</code>/自写解析）。</li>
+  <li><strong>采集验证</strong>：日志确认 <code>AudioRecord</code> 初始化成功、块持续到来。</li>
+  <li><strong>编码耗时验证</strong>：UI/日志里 <code>encodeUs</code> 应稳定 &lt; 500000（500ms）。</li>
+  <li><strong>端到端验证</strong>：播放音乐，用手感 + 日志（played 计数持续增长）确认震动连续。</li>
+</ol>
+
+<h3>11.2 关键日志锚点（建议）</h3>
+<ul>
+  <li><code>capture started, bufSize=...</code></li>
+  <li><code>media routed to earpiece for haptic output</code></li>
+  <li><code>encode failed rc=...</code>（出现即编码异常）</li>
+  <li><code>muted session &lt;id&gt; via DynamicsProcessing</code>（静音生效）</li>
+  <li><code>no privileged shell available</code>（静音降级，正常）</li>
+</ul>
+
+<hr>
+
+<h2 id="c12">12. 故障排查手册（症状 → 原因 → 处置）<a class="anchor" href="#c12">#</a></h2>
+<table>
+<tr><th>症状</th><th>最可能原因</th><th>处置</th></tr>
+<tr><td><strong>能播不震</strong></td><td>① comment 不是独立完整的一条 <code>ANDROID_HAPTIC=1</code>；② 设备不支持触觉播放；③ 未走听筒路由</td><td>用 <code>vorbis_comment_add</code> 写完整串；探测设备能力；强制路由到听筒 + <code>USAGE_VOICE_COMMUNICATION</code></td></tr>
+<tr><td><strong>完全无声</strong></td><td>未授权屏幕录制 / DRM 保护内容 / 采集失败</td><td>检查授权；换普通音频源</td></tr>
+<tr><td><strong>震动只持续约 1 秒或几段后消失</strong></td><td>接力链断裂 / 队列抽空 / 路由被回收</td><td>共享 audio session；完成回调兼容 cur/next；起播预缓冲 ≥2；50ms 路由自愈</td></tr>
+<tr><td><strong>播约 90ms 就被 stop</strong></td><td>两段播放器 session 不同，框架拆 track</td><td>统一 <code>sharedAudioSessionId</code></td></tr>
+<tr><td><strong>震动断续、周期卡顿</strong></td><td>编码耗时 ≥ 分片时长，实时性跟不上</td><td>降低 <code>ENCODE_QUALITY</code>；增大 <code>SEGMENT_MS</code>；检查 <code>encodeUs</code></td></tr>
+<tr><td><strong>有回声（原声+延迟声）</strong></td><td>无特权，原声未被静音</td><td>授权 root/Shizuku；或接受降级</td></tr>
+<tr><td><strong>低音太轰</strong></td><td>低频未滤除</td><td>提高 <code>HAPTIC_HIGHPASS_HZ</code>、增加 <code>HIGHPASS_ORDER</code>、降低 <code>LOW_SHELF</code></td></tr>
+<tr><td><strong>安静段落无振动</strong></td><td>门槛过高</td><td>降低 <code>HAPTIC_GATE_RMS</code></td></tr>
+<tr><td><strong>响段"打底"（刺耳）</strong></td><td>电平过高/削波过载</td><td>降低 <code>HAPTIC_OUTPUT_SCALE</code>、降低 <code>COMPRESS_THRESHOLD</code>、启用软削波</td></tr>
+<tr><td><strong>调音量后震动变弱消失</strong></td><td>未做动态处理，触觉随绝对电平走</td><td>引入压缩器（§5.2），使振动跟随"相对能量"</td></tr>
+<tr><td><strong><code>UnsatisfiedLinkError: libc++_shared.so</code></strong></td><td>C++ 运行时未静态链接</td><td>链接加 <code>-static-libstdc++</code></td></tr>
+<tr><td><strong>Android 14+ 启动前台服务崩溃</strong></td><td>未声明 <code>FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION</code></td><td>显式声明服务类型</td></tr>
+<tr><td><strong>息屏后失效</strong></td><td>无 wake lock</td><td>持 <code>PARTIAL_WAKE_LOCK</code></td></tr>
+</table>
+
+<hr>
+
+<h2 id="c13">13. 参数总表（可调项汇总）<a class="anchor" href="#c13">#</a></h2>
+<table>
+<tr><th>分组</th><th>参数</th><th>建议默认</th><th>备注</th></tr>
+<tr><td>格式</td><td>SAMPLE_RATE</td><td>48000</td><td>固定</td></tr>
+<tr><td>格式</td><td>CAPTURE_BLOCK_FRAMES</td><td>4800</td><td>~100ms</td></tr>
+<tr><td>分片</td><td>SEGMENT_MS / FRAMES</td><td>500 / 24000</td><td></td></tr>
+<tr><td>分片</td><td>OUT_CHANNELS</td><td>3</td><td>L/R/haptic</td></tr>
+<tr><td>编码</td><td>ENCODE_QUALITY</td><td>0.5</td><td>权衡清晰度与耗时</td></tr>
+<tr><td>队列</td><td>MAX_PENDING / CAPTURE_QUEUE</td><td>6 / 4</td><td>有界，丢最旧</td></tr>
+<tr><td>队列</td><td>START_PREBUFFER</td><td>2</td><td>防抽空</td></tr>
+<tr><td>触觉</td><td>HAPTIC_OUTPUT_SCALE</td><td>0.65</td><td>总电平</td></tr>
+<tr><td>触觉</td><td>HAPTIC_GATE_RMS</td><td>0.02</td><td>静音门槛</td></tr>
+<tr><td>触觉</td><td>HAPTIC_HIGHPASS_HZ / ORDER</td><td>250 / 2</td><td>低频压制</td></tr>
+<tr><td>触觉</td><td>HAPTIC_LOW_SHELF</td><td>0.12</td><td>低频混回</td></tr>
+<tr><td>触觉</td><td>SOFT_CLIP_LIMIT</td><td>0.99</td><td>软削波上限</td></tr>
+<tr><td>压缩</td><td>COMPRESS_THRESHOLD</td><td>0.35</td><td></td></tr>
+<tr><td>压缩</td><td>COMPRESS_RATIO</td><td>3.0</td><td></td></tr>
+<tr><td>压缩</td><td>COMPRESS_ATTACK / RELEASE</td><td>0.4 / 0.08</td><td></td></tr>
+<tr><td>静音</td><td>MUTE_GAIN_DB / MUTE_POLL_MS</td><td>-80 / 1500</td><td></td></tr>
+<tr><td>对齐</td><td>DELAY_MS_MIN / MAX</td><td>-2000 / 2000</td><td></td></tr>
+</table>
+
+<hr>
+
+<h2 id="c14">14. 给 AI 的"从零构建"执行清单<a class="anchor" href="#c14">#</a></h2>
+<p>按此顺序推进，每步可独立验证：</p>
+<ol>
+  <li>建 Android 工程（minSdk 31），配置权限与前台服务类型。</li>
+  <li>实现 <code>Haptics</code> 探测并显示能力。</li>
+  <li>实现 <code>CaptureEngine</code>：能抓到系统音频并打出块日志。</li>
+  <li>引入 libogg + libvorbis，写 JNI <code>nativeEncode</code>，<strong>先做 2 声道</strong>验证编码可用、能被播放器播放。</li>
+  <li>改为 3 声道并写入 <code>ANDROID_HAPTIC=1</code>，检查 comment 正确。</li>
+  <li>实现 <code>HapticMixer</code>（先只做 <code>(L+R)*scale</code>，再逐步加高通/压缩/软削波）。</li>
+  <li>实现 <code>SegmentRing</code> + <code>SegmentPlayer</code>：先单播放器顺序播放，确认有声音；再改双播放器接力 + 共享 session + 听筒路由，确认震动连续。</li>
+  <li>加预缓冲、路由自愈、背压丢最旧。</li>
+  <li>实现 <code>SessionMuter</code> + <code>PrivilegedShell</code>（可选，消回声）。</li>
+  <li>做 UI 与参数持久化，按 §11 逐项验证，按 §12 排错。</li>
+</ol>
+
+<hr>
+
+<h2 id="cA">附录 A：关键的数学定义<a class="anchor" href="#cA">#</a></h2>
+<ul>
+  <li>一阶高通：<code>y[n] = a*(y[n-1] + x[n] - x[n-1])</code>，<code>a = R/(R+1)</code>，<code>R = 1/(2π·fc/fs)</code></li>
+  <li>RMS：<code>sqrt(Σx²/N)/32768</code></li>
+  <li>压缩目标增益：<code>(threshold/rms)^(1 - 1/ratio)</code></li>
+  <li>软削波：<code>y = f·(f²+27)/(9f²+27)</code>，<code>f = clamp(x/32768, ±limit)</code></li>
+</ul>
+
+<h2 id="cB">附录 B：许可<a class="anchor" href="#cB">#</a></h2>
+<p>本文档为原创技术规格，可自由使用与再分发（建议 CC BY 4.0 或 MIT）。libogg / libvorbis 遵循 Xiph.Org 的 BSD 3-Clause 许可。</p>
+
+<hr>
+<p class="muted">本文件由项目自行撰写，描述音频耦合触觉播放器的实现原理与构建方法。平台行为随厂商/版本可能不同，以实际设备表现为准。</p>
+
+</main>
+</div>
+
+<a class="back" href="#top" title="回到顶部">↑</a>
+</body>
+</html>

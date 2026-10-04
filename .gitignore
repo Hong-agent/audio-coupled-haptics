@@ -1,0 +1,20 @@
+# Android / Gradle
+.gradle/
+build/
+captures/
+.cxx/
+local.properties
+*.iml
+.idea/
+.externalNativeBuild/
+
+# NDK / native build output
+obj/
+libs/
+*.so
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*~
