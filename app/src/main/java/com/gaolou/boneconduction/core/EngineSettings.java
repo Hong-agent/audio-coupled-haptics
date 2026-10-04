@@ -54,10 +54,12 @@ public final class EngineSettings implements HapticParams {
 
     /** 调音预设：一键切换一套互相自洽的参数。 */
     public enum Preset {
-        BALANCED("均衡", 0.72f, 0.02f, 250f, 2, 300f, 0.12f, 0.35f, 3.0f),
-        PUNCHY("强节奏", 1.00f, 0.015f, 180f, 2, 240f, 0.20f, 0.28f, 4.0f),
-        CRISP("清脆", 0.65f, 0.025f, 420f, 3, 500f, 0.07f, 0.40f, 2.5f),
-        GENTLE("轻柔", 0.45f, 0.03f, 300f, 2, 260f, 0.10f, 0.45f, 2.0f),
+        // 所有预设都不启用输出级低通（LOWPASS_HZ_OFF = 不滤波），保持宽频手感；
+        // 需要压破音时由用户手动调低「高频上限」或打开「谐振载波驱动」。
+        BALANCED("均衡", 0.72f, 0.02f, 250f, 2, EngineConfig.LOWPASS_HZ_OFF, 0.12f, 0.35f, 3.0f),
+        PUNCHY("强节奏", 1.00f, 0.015f, 180f, 2, EngineConfig.LOWPASS_HZ_OFF, 0.20f, 0.28f, 4.0f),
+        CRISP("清脆", 0.65f, 0.025f, 420f, 3, EngineConfig.LOWPASS_HZ_OFF, 0.07f, 0.40f, 2.5f),
+        GENTLE("轻柔", 0.45f, 0.03f, 300f, 2, EngineConfig.LOWPASS_HZ_OFF, 0.10f, 0.45f, 2.0f),
         CUSTOM("自定义", 0f, 0f, 0f, 0, 0f, 0f, 0f, 0f);
 
         public final String label;
